@@ -13,6 +13,16 @@ class geniebot(oauthbot):
         self.ll_token = conf.get('long_lived_token')
         self.ll_token_file = conf.get('long_lived_token_file')
 
+        # Load token from file if specified
+        if self.ll_token_file and not self.ll_token:
+            try:
+                with open(self.ll_token_file, 'r') as f:
+                    self.ll_token = f.read().strip()
+                _LOGGER.info("Loaded long-lived token from file: %s", self.ll_token_file)
+            except Exception as e:
+                _LOGGER.error("Failed to load token file %s: %s", self.ll_token_file, e)
+                self.ll_token = None
+
         # Initialize with or without OAuth based on config
         if self.ll_token or self.ll_token_file:
             # Long-Lived Token mode: Don't trigger OAuth patching

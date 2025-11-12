@@ -1,0 +1,50 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "ZhiBot 配置",
+        "description": "配置 ZhiBot 语音助手集成\n\n支持天猫精灵、小爱同学等语音助手控制 Home Assistant",
+        "data": {
+          "platform": "平台",
+          "name": "名称",
+          "long_lived_token": "长寿命令牌",
+          "long_lived_token_file": "令牌文件路径",
+          "token": "传统令牌（不推荐）"
+        },
+        "data_description": {
+          "platform": "选择语音助手平台",
+          "name": "端点名称，例如：tmall, genie",
+          "long_lived_token": "Home Assistant 长寿命访问令牌（推荐）",
+          "long_lived_token_file": "包含令牌的文件路径",
+          "token": "OAuth 令牌（已弃用，建议使用长寿命令牌）"
+        },
+        "errors": {
+          "already_configured": "此名称已被配置",
+          "invalid_token": "令牌格式无效",
+          "file_not_found": "令牌文件未找到"
+        }
+      }
+    },
+    "options": {
+      "init": {
+        "title": "ZhiBot 选项",
+        "description": "管理 ZhiBot 设置",
+        "data": {
+          "long_lived_token": "长寿命令牌",
+          "long_lived_token_file": "令牌文件路径"
+        }
+      }
+    }
+  },
+  "config_entry_not_found": {
+    "title": "ZhiBot 配置未找到",
+    "description": "未找到 ZhiBot 配置。请检查 configuration.yaml 或通过 UI 添加集成。"
+  },
+  "common": {
+    "cancel": "取消",
+    "save": "保存",
+    "next": "下一步",
+    "back": "返回",
+    "finish": "完成"
+  }
+}

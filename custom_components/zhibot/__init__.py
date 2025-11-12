@@ -1,8 +1,8 @@
 from importlib import import_module
 from homeassistant.util import slugify
-from homeassistant.util.json import load_json, save_json
 from homeassistant.helpers.storage import STORAGE_DIR
 from homeassistant.components.http import HomeAssistantView
+import json
 
 from typing import Optional
 from datetime import timedelta
@@ -13,15 +13,84 @@ import logging
 _LOGGER = logging.getLogger(__package__)
 
 DOMAIN = 'zhibot'
+PLATFORMS = []
 
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_NAME
+import asyncio
 
+# New async setup for config entries
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up ZhiBot from YAML config or UI."""
+    
+    # Get YAML configuration
+    yaml_configs = config.get(DOMAIN, [])
+    
+    # Get existing UI config entries
+    existing_entries = {entry.data.get(CONF_NAME): entry 
+                       for entry in hass.config_entries.async_entries(DOMAIN)}
+    
+    # Process YAML configs
+    for conf in yaml_configs:
+        name = conf.get(CONF_NAME, 'tmall')
+        
+        # Check if UI config already exists for this name
+        if name in existing_entries:
+            _LOGGER.info("ZhiBot '%s' has both YAML and UI config. Using UI config.", name)
+        else:
+            # Create config entry from YAML
+            _LOGGER.info("Setting up ZhiBot '%s' from YAML config", name)
+            entry = hass.config_entries.async_add(
+                ConfigEntry(
+                    version=1,
+                    domain=DOMAIN,
+                    title=f"{name} (YAML)",
+                    data=conf,
+                    options={},
+                    source="import",
+                )
+            )
+            # Setup the entry
+            await _async_setup_entry(hass, entry)
+    
+    # Setup any UI-only entries (not imported from YAML)
+    for entry in hass.config_entries.async_entries(DOMAIN):
+        if entry.source != "import":
+            await _async_setup_entry(hass, entry)
+    
+    return True
+
+async def _async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Setup a config entry."""
+    conf = entry.data
+    
+    platform = conf['platform']
+    botname = platform + 'bot'
+    
+    # Import the platform module
+    module = import_module('.' + platform, __package__)
+    Class = getattr(module, botname)
+    
+    # Register the view
+    hass.http.register_view(Class(botname, hass, conf))
+    _LOGGER.info("ZhiBot %s registered at /%s", botname, conf.get(CONF_NAME, 'tmall'))
+
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Setup a config entry."""
+    await _async_setup_entry(hass, entry)
+    return True
+
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    # ZhiBot uses HTTP views which are automatically unregistered when unloading
+    _LOGGER.info("ZhiBot config entry unloaded: %s", entry.data.get(CONF_NAME))
+    return True
+
+# Legacy setup function for backward compatibility
 def setup(hass, config):
-    for conf in config.get(DOMAIN):
-        platform = conf['platform']
-        botname = platform + 'bot'
-        module = import_module('.' + platform, __package__)
-        Class = getattr(module, botname)
-        hass.http.register_view(Class(botname, hass, conf))
+    # Run async setup in the event loop
+    asyncio.create_task(async_setup(hass, config))
     return True
 
 
@@ -72,7 +141,17 @@ class basebot(HomeAssistantView):
     def init_auth(self, botname):
         self._auth_ui = None
         self._auth_path = self.hass.config.path(STORAGE_DIR, botname)
-        self._auth_users = load_json(self._auth_path) or []
+        # Load from hass.data or file
+        auth_data = self.hass.data.get(f"{__package__}_auth", {}).get(self._auth_path)
+        if auth_data:
+            self._auth_users = auth_data
+        else:
+            # Try to load from file
+            try:
+                with open(self._auth_path, 'r') as f:
+                    self._auth_users = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                self._auth_users = []
 
     async def async_check_auth(self, data):
         return self.check_auth(data)
@@ -95,7 +174,14 @@ class basebot(HomeAssistantView):
             _LOGGER.debug(fields)
             if fields.get('agree') == 'ok':
                 self.auth_users.append(user)
-                save_json(self._auth_path, self.auth_users)
+                # Use hass.data for storage (modern approach)
+                self.hass.data.setdefault(f"{__package__}_auth", {})[self._auth_path] = self.auth_users
+                # Also save to file for backward compatibility
+                try:
+                    with open(self._auth_path, 'w') as f:
+                        json.dump(self.auth_users, f)
+                except Exception as e:
+                    _LOGGER.error("Failed to save auth file: %s", e)
 
         self._auth_ui = configurator.async_request_config(
             '智加加', config_callback,
